@@ -278,17 +278,32 @@ class MetaQuery {
 			]
 		] );
 
+		$meta_query = [
+			'relation'  => [
+				'type' => 'RelationEnum',
+			],
+			'metaArray' => [
+				'type' => [
+					'list_of' => $type_name . 'MetaArray',
+				],
+			],
+		];
+
+		$type_registry->register_input_type( $type_name . 'InnerMetaQuery', [
+			'fields' => $meta_query
+		] );
+
 		$type_registry->register_input_type( $type_name . 'MetaQuery', [
-			'fields' => [
-				'relation'  => [
-					'type' => 'RelationEnum',
-				],
-				'metaArray' => [
-					'type' => [
-						'list_of' => $type_name . 'MetaArray',
-					],
-				],
-			]
+			'fields' => array_merge(
+				$meta_query,
+				[
+					'metaQuery' => [
+						'type' => [
+							'list_of' => $type_name . 'InnerMetaQuery'
+						]
+					]
+				]
+			)
 		] );
 
 	}
@@ -312,24 +327,34 @@ class MetaQuery {
 		 *
 		 * @since 0.0.1
 		 */
-		$meta_query = null;
 		if ( ! empty( $input_args['metaQuery'] ) ) {
-			$meta_query = $input_args['metaQuery'];
-			if ( ! empty( $meta_query['metaArray'] ) && is_array( $meta_query['metaArray'] ) ) {
-				if ( 2 < count( $meta_query['metaArray'] ) ) {
-					unset( $meta_query['relation'] );
-				}
-				foreach ( $meta_query['metaArray'] as $meta_query_key => $value ) {
-					$meta_query[] = [
-						$meta_query_key => $value,
-					];
+			$meta_query = null;
+
+			$input_meta_query = $input_args['metaQuery'];
+			$value = $this->prepare_meta_query( $input_meta_query );
+			if ( ! empty( $value ) ) {
+				unset( $value['metaQuery'] );
+				$meta_query[] = $value;
+			}
+
+			if (
+				! empty( $input_meta_query['metaQuery'] )
+				&& is_array( $input_meta_query['metaQuery'] )
+			) {
+				foreach ( $input_meta_query['metaQuery'] as $value ) {
+					$value = $this->prepare_meta_query( $value );
+					if ( ! empty( $value ) ) {
+						$meta_query[] = $value;
+					}
 				}
 			}
-			unset( $meta_query['metaArray'] );
 
-		}
-		if ( ! empty( $meta_query ) ) {
-			$query_args['meta_query'] = $meta_query;
+			if ( ! empty( $meta_query ) ) {
+				if ( 1 < count( $meta_query ) ) {
+					$meta_query['relation'] = $input_args['metaQuery']['relation'] ?? 'AND';
+				}
+				$query_args['meta_query'] = $meta_query;
+			}
 		}
 
 		/**
@@ -341,6 +366,22 @@ class MetaQuery {
 
 	}
 
+	private function prepare_meta_query( $meta_query ) {
+		if (
+			! empty( $meta_query['metaArray'] )
+			&& is_array( $meta_query['metaArray'] )
+		) {
+			if ( 2 > count( $meta_query['metaArray'] ) ) {
+				unset( $meta_query['relation'] );
+			}
+			$meta_query = array_merge( $meta_query, $meta_query['metaArray'] );
+			unset( $meta_query['metaArray'] );
+
+			return $meta_query;
+		}
+
+		return null;
+	}
 }
 
 /**
